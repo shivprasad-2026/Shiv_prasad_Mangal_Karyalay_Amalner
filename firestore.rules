@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == "xum1AX3wZcW69Hf7fSNhh2KL0hN2";
+    }
+
+    function validReviewFields(data) {
+      return data.keys().hasAll([
+          "name", "mobile", "rating", "message", "status", "createdAt", "updatedAt"
+        ])
+        && data.keys().hasOnly([
+          "name", "mobile", "rating", "message", "status", "createdAt", "updatedAt"
+        ])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 80
+        && data.mobile is string
+        && data.mobile.size() <= 20
+        && data.mobile.matches("^[0-9+() -]*$")
+        && data.rating is int
+        && data.rating >= 1
+        && data.rating <= 5
+        && data.message is string
+        && data.message.size() > 0
+        && data.message.size() <= 2000
+        && data.status in ["pending", "approved", "rejected"]
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function validPublicReview(data) {
+      return data.keys().hasAll([
+          "name", "rating", "message", "status", "createdAt", "updatedAt"
+        ])
+        && data.keys().hasOnly([
+          "name", "rating", "message", "status", "createdAt", "updatedAt"
+        ])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 80
+        && data.rating is int
+        && data.rating >= 1
+        && data.rating <= 5
+        && data.message is string
+        && data.message.size() > 0
+        && data.message.size() <= 2000
+        && data.status == "approved"
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /venue/content {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow get, list: if isAdmin();
+
+      allow create: if validReviewFields(request.resource.data)
+        && request.resource.data.status == "pending"
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && validReviewFields(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isAdmin();
+    }
+
+    match /publicReviews/{reviewId} {
+      allow get, list: if isAdmin() || resource.data.status == "approved";
+      allow create, update: if isAdmin()
+        && validPublicReview(request.resource.data)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+  }
+}
